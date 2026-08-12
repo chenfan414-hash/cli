@@ -247,6 +247,42 @@ func TestMinutesWordReplace_WordsNotFound(t *testing.T) {
 	}
 }
 
+func TestMinutesWordReplace_ASRQuotaNotEnough(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	warmTokenCache(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPut,
+		URL:    "/open-apis/minutes/v1/minutes/" + minutesWordReplaceTestToken + "/transcript/word",
+		Body: map[string]interface{}{
+			"code": minutesWordReplaceASRQuotaNotEnough,
+			"msg":  "asr/ai quota not enough",
+		},
+	})
+
+	err := mountAndRun(t, MinutesWordReplace, []string{
+		"+word-replace",
+		"--minute-token", minutesWordReplaceTestToken,
+		"--replace-words", `[{"source_word":"foo","target_word":"bar"}]`,
+		"--format", "json", "--as", "user",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected ASR/AI quota error, got nil")
+	}
+
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("want typed errs.*, got %T: %v", err, err)
+	}
+	if p.Subtype != errs.SubtypeQuotaExceeded {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeQuotaExceeded)
+	}
+	if !strings.Contains(p.Hint, "detail page") {
+		t.Errorf("hint should point to the minute detail page, got: %s", p.Hint)
+	}
+}
+
 // A generic 40001 without the transcript marker must NOT be rewritten as
 // words_not_found; it should surface as the original invalid-params error.
 func TestMinutesWordReplace_GenericInvalidParamsNotRewritten(t *testing.T) {

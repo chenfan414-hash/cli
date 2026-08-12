@@ -405,6 +405,75 @@ func TestMinutesTodo_NoEditPermission(t *testing.T) {
 	}
 }
 
+func TestMinutesSummary_ASRQuotaNotEnough(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	warmTokenCache(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPut,
+		URL:    "/open-apis/minutes/v1/minutes/" + minutesSummaryTodoTestToken + "/summary",
+		Body: map[string]interface{}{
+			"code": minutesSummaryASRQuotaNotEnough,
+			"msg":  "asr/ai quota not enough",
+		},
+	})
+
+	err := mountAndRun(t, MinutesSummary, []string{
+		"+summary",
+		"--minute-token", minutesSummaryTodoTestToken,
+		"--summary", "weekly sync",
+		"--format", "json", "--as", "user",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected ASR/AI quota error, got nil")
+	}
+
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("want typed errs.*, got %T: %v", err, err)
+	}
+	if p.Subtype != errs.SubtypeQuotaExceeded {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeQuotaExceeded)
+	}
+	if !strings.Contains(p.Hint, "detail page") {
+		t.Errorf("hint should point to the minute detail page, got: %s", p.Hint)
+	}
+}
+
+func TestMinutesTodo_ASRQuotaNotEnough(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	warmTokenCache(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/minutes/v1/minutes/" + minutesSummaryTodoTestToken + "/todo",
+		Body: map[string]interface{}{
+			"code": minutesTodoASRQuotaNotEnough,
+			"msg":  "asr/ai quota not enough",
+		},
+	})
+
+	err := mountAndRun(t, MinutesTodo, []string{
+		"+todo", "--minute-token", minutesSummaryTodoTestToken,
+		"--operation", "add",
+		"--todo", "finish deck", "--is-done=false", "--as", "user",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected ASR/AI quota error, got nil")
+	}
+
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("want typed errs.*, got %T: %v", err, err)
+	}
+	if p.Subtype != errs.SubtypeQuotaExceeded {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeQuotaExceeded)
+	}
+	if !strings.Contains(p.Hint, "detail page") {
+		t.Errorf("hint should point to the minute detail page, got: %s", p.Hint)
+	}
+}
+
 func TestMinutesSummaryAndTodo_HelpMetadata(t *testing.T) {
 	for _, tip := range MinutesSummary.Tips {
 		if strings.Contains(tip, "raw text") {
