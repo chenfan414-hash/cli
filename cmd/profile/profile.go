@@ -23,6 +23,7 @@ func NewCmdProfile(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(NewCmdProfileList(f))
 	cmd.AddCommand(NewCmdProfileUse(f))
 	cmd.AddCommand(NewCmdProfileAdd(f))
+	cmd.AddCommand(NewCmdProfileEnv(f))
 	cmd.AddCommand(NewCmdProfileRemove(f))
 	cmd.AddCommand(NewCmdProfileRename(f))
 	return cmd

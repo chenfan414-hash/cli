@@ -115,6 +115,122 @@ func TestProfileAddRun_Lang(t *testing.T) {
 	})
 }
 
+func TestProfileEnvRun_PersistsEnvironmentAndLane(t *testing.T) {
+	setupProfileConfigDir(t)
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{{
+			Name:      "default",
+			AppId:     "app-default",
+			AppSecret: core.PlainSecret("secret-default"),
+			Brand:     core.BrandFeishu,
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+	if err := profileEnvRun(f, "default", "pre", " ppe_hzc_test "); err != nil {
+		t.Fatalf("profileEnvRun() error = %v", err)
+	}
+
+	saved, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig() error = %v", err)
+	}
+	app := saved.FindApp("default")
+	if app == nil {
+		t.Fatal("saved profile not found")
+	}
+	if app.Environment != core.RuntimeEnvPre {
+		t.Fatalf("Environment = %q, want %q", app.Environment, core.RuntimeEnvPre)
+	}
+	if app.Lane != "ppe_hzc_test" {
+		t.Fatalf("Lane = %q, want ppe_hzc_test", app.Lane)
+	}
+	if !strings.Contains(stderr.String(), "pre/ppe_hzc_test") {
+		t.Fatalf("stderr = %q, want pre/lane success", stderr.String())
+	}
+}
+
+func TestProfileEnvRun_ProdClearsEnvironmentAndLane(t *testing.T) {
+	setupProfileConfigDir(t)
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{{
+			Name:        "default",
+			AppId:       "app-default",
+			AppSecret:   core.PlainSecret("secret-default"),
+			Brand:       core.BrandFeishu,
+			Environment: core.RuntimeEnvPre,
+			Lane:        "ppe_hzc_test",
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := profileEnvRun(f, "default", "prod", "ignored_lane"); err != nil {
+		t.Fatalf("profileEnvRun() error = %v", err)
+	}
+
+	saved, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig() error = %v", err)
+	}
+	app := saved.FindApp("default")
+	if app.Environment != "" || app.Lane != "" {
+		t.Fatalf("prod profile stored Environment/Lane = %q/%q, want both empty", app.Environment, app.Lane)
+	}
+}
+
+func TestProfileEnvRun_Validation(t *testing.T) {
+	setupProfileConfigDir(t)
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{{
+			Name:      "default",
+			AppId:     "app-default",
+			AppSecret: core.PlainSecret("secret-default"),
+			Brand:     core.BrandFeishu,
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		profile     string
+		environment string
+		lane        string
+		param       string
+	}{
+		{name: "unknown profile", profile: "missing", environment: "pre", lane: "ppe", param: ""},
+		{name: "bad environment", profile: "default", environment: "dev", lane: "ppe", param: "--environment"},
+		{name: "pre missing lane", profile: "default", environment: "pre", param: "--lane"},
+		{name: "boe missing lane", profile: "default", environment: "boe", param: "--lane"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, nil)
+			err := profileEnvRun(f, tc.profile, tc.environment, tc.lane)
+			if err == nil {
+				t.Fatal("profileEnvRun() error = nil, want validation error")
+			}
+			var valErr *errs.ValidationError
+			if !errors.As(err, &valErr) {
+				t.Fatalf("error = %T %v, want *errs.ValidationError", err, err)
+			}
+			if tc.param != "" && valErr.Param != tc.param {
+				t.Fatalf("Param = %q, want %q", valErr.Param, tc.param)
+			}
+		})
+	}
+}
+
 func TestProfileAddRun_UseAfterUpdatesCurrentAndPrevious(t *testing.T) {
 	setupProfileConfigDir(t)
 	multi := &core.MultiAppConfig{
@@ -355,8 +471,41 @@ func TestProfileListRun_OutputsProfiles(t *testing.T) {
 	if got[0].Name != "default" || !got[0].Active {
 		t.Fatalf("got[0] = %#v, want active default profile", got[0])
 	}
+	if got[0].Environment != "prod" || got[0].Lane != "" {
+		t.Fatalf("got[0] environment/lane = %q/%q, want prod/empty", got[0].Environment, got[0].Lane)
+	}
 	if got[1].Name != "target" || got[1].Active {
 		t.Fatalf("got[1] = %#v, want inactive target profile", got[1])
+	}
+}
+
+func TestProfileListRun_OutputsEnvironmentAndLane(t *testing.T) {
+	setupProfileConfigDir(t)
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{
+			{Name: "default", AppId: "app-default", AppSecret: core.PlainSecret("secret-default"), Brand: core.BrandFeishu},
+			{Name: "target", AppId: "app-target", AppSecret: core.PlainSecret("secret-target"), Brand: core.BrandFeishu, Environment: core.RuntimeEnvPre, Lane: "ppe_hzc_test"},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	if err := profileListRun(f); err != nil {
+		t.Fatalf("profileListRun() error = %v", err)
+	}
+
+	var got []profileListItem
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v; output=%s", err, stdout.String())
+	}
+	if got[0].Environment != "prod" || got[0].Lane != "" {
+		t.Fatalf("default environment/lane = %q/%q, want prod/empty", got[0].Environment, got[0].Lane)
+	}
+	if got[1].Environment != "pre" || got[1].Lane != "ppe_hzc_test" {
+		t.Fatalf("target environment/lane = %q/%q, want pre/ppe_hzc_test", got[1].Environment, got[1].Lane)
 	}
 }
 

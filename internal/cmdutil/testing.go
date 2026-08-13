@@ -45,15 +45,18 @@ func TestFactory(t *testing.T, config *core.CliConfig) (*Factory, *bytes.Buffer,
 
 	var testLarkClient *lark.Client
 	if config != nil && config.AppID != "" {
+		headers := BaseSecurityHeaders()
 		opts := []lark.ClientOptionFunc{
 			lark.WithEnableTokenCache(false),
 			lark.WithLogLevel(larkcore.LogLevelError),
 			lark.WithHttpClient(sdkMockClient),
-			lark.WithHeaders(BaseSecurityHeaders()),
 		}
 		if config.Brand != "" {
-			opts = append(opts, lark.WithOpenBaseUrl(core.ResolveOpenBaseURL(config.Brand)))
+			endpoints := core.ResolveRuntimeEndpoints(config.Brand, config.Environment, config.Lane)
+			opts = append(opts, lark.WithOpenBaseUrl(endpoints.Open))
+			headers = MergeHeaders(headers, core.RuntimeHeaders(config.Environment, config.Lane))
 		}
+		opts = append(opts, lark.WithHeaders(headers))
 		testLarkClient = lark.NewClient(config.AppID, credential.RuntimeAppSecret(config.AppSecret), opts...)
 	}
 

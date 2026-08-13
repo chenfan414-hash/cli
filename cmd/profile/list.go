@@ -26,6 +26,8 @@ type profileListItem struct {
 	Name            string         `json:"name"`
 	AppID           string         `json:"appId"`
 	Brand           core.LarkBrand `json:"brand"`
+	Environment     string         `json:"environment"`
+	Lane            string         `json:"lane,omitempty"`
 	Active          bool           `json:"active"`
 	Effective       bool           `json:"effective,omitempty"`
 	EffectiveSource string         `json:"effectiveSource,omitempty"` // config | flag | environment
@@ -84,10 +86,15 @@ func profileListRun(f *cmdutil.Factory) error {
 		name := app.ProfileName()
 
 		item := profileListItem{
-			Name:   name,
-			AppID:  app.AppId,
-			Brand:  app.Brand,
-			Active: name == currentName,
+			Name:        name,
+			AppID:       app.AppId,
+			Brand:       app.Brand,
+			Environment: string(core.RuntimeEnvProd),
+			Active:      name == currentName,
+		}
+		if app.Environment != "" {
+			item.Environment = string(app.Environment)
+			item.Lane = app.Lane
 		}
 		if effectiveApp != nil && name == effectiveName {
 			item.Effective = true

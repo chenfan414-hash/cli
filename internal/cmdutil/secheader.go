@@ -62,6 +62,24 @@ func BaseSecurityHeaders() http.Header {
 	return h
 }
 
+func MergeHeaders(base http.Header, overlays ...http.Header) http.Header {
+	merged := make(http.Header)
+	for name, values := range base {
+		for _, value := range values {
+			merged.Add(name, value)
+		}
+	}
+	for _, overlay := range overlays {
+		for name, values := range overlay {
+			merged.Del(name)
+			for _, value := range values {
+				merged.Add(name, value)
+			}
+		}
+	}
+	return merged
+}
+
 var (
 	buildKindOnce sync.Once
 	buildKindVal  string

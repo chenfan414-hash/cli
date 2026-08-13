@@ -102,14 +102,51 @@ func (c *APIClient) buildApiReq(request RawApiRequest) (*larkcore.ApiReq, []lark
 
 	apiReq := &larkcore.ApiReq{
 		HttpMethod:  strings.ToUpper(request.Method),
-		ApiPath:     request.URL,
+		ApiPath:     c.resolveRuntimeAPIPath(request.URL),
 		Body:        request.Data,
 		QueryParams: queryParams,
 	}
 
 	var opts []larkcore.RequestOptionFunc
 	opts = append(opts, request.ExtraOpts...)
+	opts = c.withRuntimeHeaderOptions(opts)
 	return apiReq, opts
+}
+
+func (c *APIClient) runtimeHeaders() http.Header {
+	if c == nil || c.Config == nil {
+		return nil
+	}
+	return core.RuntimeHeaders(c.Config.Environment, c.Config.Lane)
+}
+
+func (c *APIClient) resolveRuntimeAPIPath(apiPath string) string {
+	if strings.HasPrefix(apiPath, "http://") || strings.HasPrefix(apiPath, "https://") {
+		return apiPath
+	}
+	if c == nil || c.Config == nil {
+		return apiPath
+	}
+	endpoints := core.ResolveRuntimeEndpoints(c.Config.Brand, c.Config.Environment, c.Config.Lane)
+	return strings.TrimRight(endpoints.Open, "/") + "/" + strings.TrimLeft(apiPath, "/")
+}
+
+func (c *APIClient) withRuntimeHeaderOptions(opts []larkcore.RequestOptionFunc) []larkcore.RequestOptionFunc {
+	headers := c.runtimeHeaders()
+	if len(headers) == 0 {
+		return opts
+	}
+	return append(opts, func(option *larkcore.RequestOption) {
+		if option.Header == nil {
+			option.Header = make(http.Header)
+		}
+		for name, values := range headers {
+			option.Header.Del(name)
+			for _, value := range values {
+				option.Header.Add(name, value)
+			}
+		}
+	})
 }
 
 // DoSDKRequest resolves auth for the given identity and executes a pre-built SDK request.
@@ -144,12 +181,26 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 		opts = append(opts, larkcore.WithUserAccessToken(token))
 	}
 
-	opts = append(opts, extraOpts...)
+	req = c.withRuntimeAPIPath(req)
+	opts = c.withRuntimeHeaderOptions(append(opts, extraOpts...))
 	resp, err := c.SDK.Do(ctx, req, opts...)
 	if err != nil {
 		return nil, WrapDoAPIError(err)
 	}
 	return resp, nil
+}
+
+func (c *APIClient) withRuntimeAPIPath(req *larkcore.ApiReq) *larkcore.ApiReq {
+	if req == nil {
+		return req
+	}
+	resolvedPath := c.resolveRuntimeAPIPath(req.ApiPath)
+	if resolvedPath == req.ApiPath {
+		return req
+	}
+	cloned := *req
+	cloned.ApiPath = resolvedPath
+	return &cloned
 }
 
 // DoStream executes a streaming HTTP request against the Lark OpenAPI endpoint.
@@ -172,7 +223,7 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	}
 
 	// Build URL
-	requestURL, err := buildStreamURL(c.Config.Brand, req)
+	requestURL, err := buildStreamURL(c.Config, req)
 	if err != nil {
 		return nil, err
 	}
@@ -211,6 +262,11 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 
 	if contentType != "" {
 		httpReq.Header.Set("Content-Type", contentType)
+	}
+	for name, values := range c.runtimeHeaders() {
+		for _, value := range values {
+			httpReq.Header.Add(name, value)
+		}
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+token)
 
@@ -296,7 +352,7 @@ func (r *cancelOnCloseBody) Close() error {
 	return err
 }
 
-func buildStreamURL(brand core.LarkBrand, req *larkcore.ApiReq) (string, error) {
+func buildStreamURL(config *core.CliConfig, req *larkcore.ApiReq) (string, error) {
 	requestURL := req.ApiPath
 	if !strings.HasPrefix(requestURL, "http://") && !strings.HasPrefix(requestURL, "https://") {
 		var pathSegs []string
@@ -315,7 +371,10 @@ func buildStreamURL(brand core.LarkBrand, req *larkcore.ApiReq) (string, error) 
 			}
 			pathSegs = append(pathSegs, url.PathEscape(pathValue))
 		}
-		endpoints := core.ResolveEndpoints(brand)
+		if config == nil {
+			config = &core.CliConfig{Brand: core.BrandFeishu}
+		}
+		endpoints := core.ResolveRuntimeEndpoints(config.Brand, config.Environment, config.Lane)
 		requestURL = strings.TrimRight(endpoints.Open, "/") + strings.Join(pathSegs, "/")
 	}
 	if query := req.QueryParams.Encode(); query != "" {

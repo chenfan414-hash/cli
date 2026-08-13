@@ -5,6 +5,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -146,6 +147,43 @@ func TestConfigShowRun_NoActiveProfileReturnsStructuredError(t *testing.T) {
 	}
 	if strings.Contains(cfgErr.Hint, "config init") {
 		t.Errorf("hint = %q, must not suggest config init while intact profiles exist", cfgErr.Hint)
+	}
+}
+
+func TestConfigShowRun_OutputsEnvironmentAndLane(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{{
+			Name:        "default",
+			AppId:       "app-default",
+			AppSecret:   core.PlainSecret("secret-default"),
+			Brand:       core.BrandFeishu,
+			Environment: core.RuntimeEnvPre,
+			Lane:        "ppe_hzc_test",
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configShowRun(&ConfigShowOptions{Factory: f}); err != nil {
+		t.Fatalf("configShowRun() error = %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("Unmarshal() error = %v; output=%s", err, stdout.String())
+	}
+	if got["environment"] != "pre" {
+		t.Fatalf("environment = %v, want pre", got["environment"])
+	}
+	if got["lane"] != "ppe_hzc_test" {
+		t.Fatalf("lane = %v, want ppe_hzc_test", got["lane"])
+	}
+	if got["appSecret"] != "****" {
+		t.Fatalf("appSecret = %v, want masked value", got["appSecret"])
 	}
 }
 

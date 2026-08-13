@@ -17,10 +17,12 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/skillref"
 	"github.com/larksuite/cli/internal/surface"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 func TestFactoryResolveSkillReference(t *testing.T) {
@@ -280,6 +282,68 @@ func TestNewAPIClientWithConfig(t *testing.T) {
 	}
 	if ac.HTTP == nil {
 		t.Error("HTTP should not be nil")
+	}
+}
+
+func TestNewAPIClientWithConfig_RuntimeEnvironmentSDKRouting(t *testing.T) {
+	tests := []struct {
+		name       string
+		env        core.RuntimeEnvironmentName
+		lane       string
+		wantURL    string
+		wantHeader string
+	}{
+		{
+			name:       "pre",
+			env:        core.RuntimeEnvPre,
+			lane:       "ppe_hzc_test",
+			wantURL:    "https://open.feishu-pre.cn/open-apis/bot/v3/info",
+			wantHeader: "x-use-ppe",
+		},
+		{
+			name:       "boe",
+			env:        core.RuntimeEnvBOE,
+			lane:       "boe_hzc_test",
+			wantURL:    "https://open.feishu-boe.net/open-apis/bot/v3/info",
+			wantHeader: "x-use-boe",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &core.CliConfig{
+				AppID:       "a",
+				AppSecret:   "s",
+				Brand:       core.BrandFeishu,
+				Environment: tc.env,
+				Lane:        tc.lane,
+			}
+			f, _, _, reg := TestFactory(t, cfg)
+			stub := &httpmock.Stub{
+				Method: "GET",
+				URL:    tc.wantURL,
+				Body:   map[string]interface{}{"code": 0, "msg": "ok", "bot": map[string]interface{}{"open_id": "ou_bot"}},
+			}
+			reg.Register(stub)
+
+			ac, err := f.NewAPIClientWithConfig(cfg)
+			if err != nil {
+				t.Fatalf("NewAPIClientWithConfig() error = %v", err)
+			}
+			_, err = ac.DoSDKRequest(context.Background(), &larkcore.ApiReq{
+				HttpMethod: "GET",
+				ApiPath:    "/open-apis/bot/v3/info",
+			}, core.AsBot)
+			if err != nil {
+				t.Fatalf("DoSDKRequest() error = %v", err)
+			}
+			if got := stub.CapturedHeaders.Get("X-TT-ENV"); got != tc.lane {
+				t.Fatalf("X-TT-ENV = %q, want %q", got, tc.lane)
+			}
+			if got := stub.CapturedHeaders.Get(tc.wantHeader); got != "1" {
+				t.Fatalf("%s = %q, want 1", tc.wantHeader, got)
+			}
+		})
 	}
 }
 

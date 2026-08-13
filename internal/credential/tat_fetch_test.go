@@ -325,6 +325,65 @@ func TestFetchTAT_BrandRouting(t *testing.T) {
 	}
 }
 
+func TestFetchTATForEnvironment_EndpointAndLaneHeader(t *testing.T) {
+	tests := []struct {
+		name       string
+		env        core.RuntimeEnvironmentName
+		lane       string
+		token      string
+		wantURL    string
+		wantHeader string
+	}{
+		{
+			name:       "pre",
+			env:        core.RuntimeEnvPre,
+			lane:       "ppe_hzc_test",
+			token:      "t-pre",
+			wantURL:    "https://accounts.feishu-pre.cn/oauth/v3/token",
+			wantHeader: "x-use-ppe",
+		},
+		{
+			name:       "boe",
+			env:        core.RuntimeEnvBOE,
+			lane:       "boe_hzc_test",
+			token:      "t-boe",
+			wantURL:    "https://accounts.feishu-boe.net/oauth/v3/token",
+			wantHeader: "x-use-boe",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := &stubRoundTripper{
+				respCode: 200,
+				respBody: `{"code":0,"access_token":"` + tc.token + `","token_type":"Bearer","expires_in":7200}`,
+			}
+			hc := &http.Client{Transport: rt}
+			runtime, err := core.ResolveRuntimeEnvironment(core.BrandFeishu, tc.env, tc.lane)
+			if err != nil {
+				t.Fatalf("ResolveRuntimeEnvironment() error = %v", err)
+			}
+
+			token, err := FetchTATForEnvironment(context.Background(), hc, runtime, "cli_app", "secret_x")
+			if err != nil {
+				t.Fatalf("FetchTATForEnvironment() error = %v", err)
+			}
+			if token != tc.token {
+				t.Fatalf("token = %q, want %q", token, tc.token)
+			}
+			if got := rt.gotReq.URL.String(); got != tc.wantURL {
+				t.Fatalf("url = %s, want %s", got, tc.wantURL)
+			}
+			if got := rt.gotReq.Header.Get("X-TT-ENV"); got != tc.lane {
+				t.Fatalf("X-TT-ENV = %q, want %q", got, tc.lane)
+			}
+			if got := rt.gotReq.Header.Get(tc.wantHeader); got != "1" {
+				t.Fatalf("%s = %q, want 1", tc.wantHeader, got)
+			}
+		})
+	}
+}
+
 func TestFetchTAT_ContextCanceled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()

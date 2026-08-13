@@ -219,7 +219,6 @@ func cachedLarkClientFunc(f *Factory, workspaceConfig workspaceConfigSource) fun
 		opts := []lark.ClientOptionFunc{
 			lark.WithEnableTokenCache(false),
 			lark.WithLogLevel(larkcore.LogLevelError),
-			lark.WithHeaders(BaseSecurityHeaders()),
 		}
 		if f.IOStreams.StderrIsTerminal {
 			warnIfProxied(f.IOStreams.ErrOut)
@@ -229,8 +228,9 @@ func cachedLarkClientFunc(f *Factory, workspaceConfig workspaceConfigSource) fun
 			Transport:     buildSDKTransport(hostSignalSource),
 			CheckRedirect: safeRedirectPolicy,
 		}))
-		ep := core.ResolveEndpoints(acct.Brand)
+		ep := core.ResolveRuntimeEndpoints(acct.Brand, acct.Environment, acct.Lane)
 		opts = append(opts, lark.WithOpenBaseUrl(ep.Open))
+		opts = append(opts, lark.WithHeaders(MergeHeaders(BaseSecurityHeaders(), core.RuntimeHeaders(acct.Environment, acct.Lane))))
 		return lark.NewClient(acct.AppID, credential.RuntimeAppSecret(acct.AppSecret), opts...), nil
 	})
 }

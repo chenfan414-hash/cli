@@ -110,8 +110,7 @@ func ResolveOpenBaseURL(brand LarkBrand) string {
 
 var platformEndpointHosts = func() map[string]struct{} {
 	hosts := make(map[string]struct{})
-	for _, brand := range []LarkBrand{BrandFeishu, BrandLark} {
-		endpoints := ResolveEndpoints(brand)
+	for _, endpoints := range platformEndpointGroups() {
 		for _, rawURL := range []string{endpoints.Open, endpoints.Accounts, endpoints.MCP, endpoints.AppLink} {
 			parsed, err := url.Parse(rawURL)
 			if err == nil && parsed.Hostname() != "" {
@@ -121,6 +120,15 @@ var platformEndpointHosts = func() map[string]struct{} {
 	}
 	return hosts
 }()
+
+func platformEndpointGroups() []Endpoints {
+	return []Endpoints{
+		ResolveEndpoints(BrandFeishu),
+		ResolveEndpoints(BrandLark),
+		MustResolveRuntimeEnvironment(BrandFeishu, RuntimeEnvPre, "lane").Endpoints,
+		MustResolveRuntimeEnvironment(BrandFeishu, RuntimeEnvBOE, "lane").Endpoints,
+	}
+}
 
 // IsPlatformEndpointHost reports whether hostname exactly matches one of the
 // endpoint hosts produced by ResolveEndpoints. It intentionally does not use a

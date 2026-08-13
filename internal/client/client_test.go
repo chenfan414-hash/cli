@@ -151,6 +151,66 @@ func TestStreamPages_NonBatchAPI_NoArrayField(t *testing.T) {
 	}
 }
 
+func TestDoAPI_RuntimeEnvironmentEndpointAndLaneHeader(t *testing.T) {
+	tests := []struct {
+		name       string
+		env        core.RuntimeEnvironmentName
+		lane       string
+		wantPrefix string
+		wantHeader string
+	}{
+		{
+			name:       "pre",
+			env:        core.RuntimeEnvPre,
+			lane:       "ppe_hzc_test",
+			wantPrefix: "https://open.feishu-pre.cn/open-apis/contact/v3/users/u123",
+			wantHeader: "x-use-ppe",
+		},
+		{
+			name:       "boe",
+			env:        core.RuntimeEnvBOE,
+			lane:       "boe_hzc_test",
+			wantPrefix: "https://open.feishu-boe.net/open-apis/contact/v3/users/u123",
+			wantHeader: "x-use-boe",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var capturedURL string
+			var capturedLane string
+			var capturedRouteHeader string
+			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				capturedURL = req.URL.String()
+				capturedLane = req.Header.Get("X-TT-ENV")
+				capturedRouteHeader = req.Header.Get(tc.wantHeader)
+				return jsonResponse(map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}}), nil
+			})
+
+			ac, _ := newTestAPIClient(t, rt)
+			ac.Config.Environment = tc.env
+			ac.Config.Lane = tc.lane
+
+			if _, err := ac.DoAPI(context.Background(), RawApiRequest{
+				Method: "GET",
+				URL:    "/open-apis/contact/v3/users/u123",
+				As:     core.AsBot,
+			}); err != nil {
+				t.Fatalf("DoAPI() error = %v", err)
+			}
+			if !strings.HasPrefix(capturedURL, tc.wantPrefix) {
+				t.Fatalf("request URL = %q, want prefix %q", capturedURL, tc.wantPrefix)
+			}
+			if capturedLane != tc.lane {
+				t.Fatalf("X-TT-ENV = %q, want %q", capturedLane, tc.lane)
+			}
+			if capturedRouteHeader != "1" {
+				t.Fatalf("%s = %q, want 1", tc.wantHeader, capturedRouteHeader)
+			}
+		})
+	}
+}
+
 func TestStreamPages_BatchAPI_WithArrayField(t *testing.T) {
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return jsonResponse(map[string]interface{}{

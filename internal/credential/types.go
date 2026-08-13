@@ -25,6 +25,8 @@ type Account struct {
 	UserOpenId          string
 	UserName            string
 	Lang                i18n.Lang
+	Environment         core.RuntimeEnvironmentName
+	Lane                string
 	SupportedIdentities uint8
 }
 
@@ -68,6 +70,8 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 		UserOpenId:          cfg.UserOpenId,
 		UserName:            cfg.UserName,
 		Lang:                cfg.Lang,
+		Environment:         cfg.Environment,
+		Lane:                cfg.Lane,
 		SupportedIdentities: cfg.SupportedIdentities,
 	}
 }
@@ -87,6 +91,8 @@ func (a *Account) ToCliConfig() *core.CliConfig {
 		UserOpenId:          a.UserOpenId,
 		UserName:            a.UserName,
 		Lang:                a.Lang,
+		Environment:         a.Environment,
+		Lane:                a.Lane,
 		SupportedIdentities: a.SupportedIdentities,
 	}
 }

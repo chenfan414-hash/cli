@@ -159,6 +159,90 @@ func TestResolveConfigFromMulti_CarriesLang(t *testing.T) {
 	}
 }
 
+func TestAppConfig_RuntimeEnvironmentSerialization(t *testing.T) {
+	app := AppConfig{
+		AppId: "cli_test", AppSecret: PlainSecret("secret"),
+		Brand: BrandFeishu, Environment: RuntimeEnvPre, Lane: "ppe_hzc_test", Users: []AppUser{},
+	}
+	data, err := json.Marshal(app)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal raw: %v", err)
+	}
+	if _, ok := raw["environment"]; !ok {
+		t.Fatal("environment missing from serialized profile")
+	}
+	if _, ok := raw["lane"]; !ok {
+		t.Fatal("lane missing from serialized profile")
+	}
+
+	var got AppConfig
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Environment != RuntimeEnvPre || got.Lane != "ppe_hzc_test" {
+		t.Fatalf("Environment/Lane = %q/%q, want pre/ppe_hzc_test", got.Environment, got.Lane)
+	}
+}
+
+func TestResolveConfigFromMulti_RuntimeEnvironment(t *testing.T) {
+	raw := &MultiAppConfig{Apps: []AppConfig{{
+		AppId:       "cli_abc",
+		AppSecret:   PlainSecret("my-secret"),
+		Brand:       BrandFeishu,
+		Environment: RuntimeEnvPre,
+		Lane:        " ppe_hzc_test ",
+	}}}
+
+	cfg, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Environment != RuntimeEnvPre {
+		t.Fatalf("Environment = %q, want %q", cfg.Environment, RuntimeEnvPre)
+	}
+	if cfg.Lane != "ppe_hzc_test" {
+		t.Fatalf("Lane = %q, want ppe_hzc_test", cfg.Lane)
+	}
+}
+
+func TestResolveConfigFromMulti_InvalidRuntimeEnvironment(t *testing.T) {
+	tests := []struct {
+		name string
+		app  AppConfig
+	}{
+		{
+			name: "prod with lane",
+			app:  AppConfig{AppId: "cli_abc", AppSecret: PlainSecret("my-secret"), Brand: BrandFeishu, Lane: "ppe"},
+		},
+		{
+			name: "pre without lane",
+			app:  AppConfig{AppId: "cli_abc", AppSecret: PlainSecret("my-secret"), Brand: BrandFeishu, Environment: RuntimeEnvPre},
+		},
+		{
+			name: "unknown environment",
+			app:  AppConfig{AppId: "cli_abc", AppSecret: PlainSecret("my-secret"), Brand: BrandFeishu, Environment: RuntimeEnvironmentName("dev"), Lane: "ppe"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := &MultiAppConfig{Apps: []AppConfig{tc.app}}
+			_, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+			if err == nil {
+				t.Fatal("ResolveConfigFromMulti() error = nil, want config error")
+			}
+			var cfgErr *errs.ConfigError
+			if !errors.As(err, &cfgErr) {
+				t.Fatalf("error = %T %v, want *errs.ConfigError", err, err)
+			}
+		})
+	}
+}
+
 func TestResolveConfigFromMulti_MatchingKeychainRefPassesValidation(t *testing.T) {
 	// Keychain ref matches appId, so validation passes.
 	// The subsequent ResolveSecretInput will fail (no real keychain),

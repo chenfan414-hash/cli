@@ -376,6 +376,7 @@ func convertAccount(ext *extcred.Account) *Account {
 		DefaultAs:           core.Identity(ext.DefaultAs),
 		ProfileName:         ext.ProfileName,
 		UserOpenId:          ext.OpenID,
+		Environment:         core.RuntimeEnvProd,
 		SupportedIdentities: uint8(ext.SupportedIdentities),
 	}
 }

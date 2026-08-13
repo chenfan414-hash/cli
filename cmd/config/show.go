@@ -69,6 +69,12 @@ func configShowRun(opts *ConfigShowOptions) error {
 	// environment) — with a session-level LARKSUITE_CLI_PROFILE in play, the
 	// effective profile and the persisted default can legitimately differ.
 	_, effectiveSource := config.EffectiveProfile(f.Invocation.Profile, f.Invocation.ProfileSource)
+	env := string(core.RuntimeEnvProd)
+	lane := ""
+	if app.Environment != "" {
+		env = string(app.Environment)
+		lane = app.Lane
+	}
 	output.PrintJson(f.IOStreams.Out, map[string]interface{}{
 		"workspace":     core.CurrentWorkspace().Display(),
 		"profile":       app.ProfileName(),
@@ -76,6 +82,8 @@ func configShowRun(opts *ConfigShowOptions) error {
 		"appId":         app.AppId,
 		"appSecret":     "****",
 		"brand":         app.Brand,
+		"environment":   env,
+		"lane":          lane,
 		"lang":          app.Lang,
 		"users":         users,
 	})

@@ -44,8 +44,13 @@ type tatResponse struct {
 //
 // The caller owns the context timeout.
 func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string) (string, error) {
-	ep := core.ResolveEndpoints(brand)
+	return FetchTATForEnvironment(ctx, httpClient, core.MustResolveRuntimeEnvironment(brand, core.RuntimeEnvProd, ""), appID, appSecret)
+}
+
+func FetchTATForEnvironment(ctx context.Context, httpClient *http.Client, runtime core.RuntimeEnvironment, appID, appSecret string) (string, error) {
+	ep := runtime.Endpoints
 	endpoint := ep.Accounts + core.OAuthTokenV3Path
+	brand := string(runtime.Brand)
 
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
@@ -57,6 +62,11 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for name, values := range runtime.Headers {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
+	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -76,7 +86,7 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 			if desc == "" {
 				desc = result.Msg
 			}
-			classified := classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
+			classified := classifyTATResponseCode(result.Code, result.Error, desc, brand, appID)
 			var apiErr *errs.APIError
 			if errors.As(classified, &apiErr) &&
 				apiErr.Subtype == errs.SubtypeRateLimit && apiErr.Retryable {
@@ -133,7 +143,7 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 	if desc == "" {
 		desc = result.Msg
 	}
-	return "", classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
+	return "", classifyTATResponseCode(result.Code, result.Error, desc, brand, appID)
 }
 
 func tatRetryAfterSeconds(header http.Header) int {

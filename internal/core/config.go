@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/larksuite/cli/errs"
@@ -38,14 +39,16 @@ type AppUser struct {
 
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
 type AppConfig struct {
-	Name       string      `json:"name,omitempty"`
-	AppId      string      `json:"appId"`
-	AppSecret  SecretInput `json:"appSecret"`
-	Brand      LarkBrand   `json:"brand"`
-	Lang       i18n.Lang   `json:"lang,omitempty"`
-	DefaultAs  Identity    `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
-	StrictMode *StrictMode `json:"strictMode,omitempty"`
-	Users      []AppUser   `json:"users"`
+	Name        string                 `json:"name,omitempty"`
+	AppId       string                 `json:"appId"`
+	AppSecret   SecretInput            `json:"appSecret"`
+	Brand       LarkBrand              `json:"brand"`
+	Environment RuntimeEnvironmentName `json:"environment,omitempty"`
+	Lane        string                 `json:"lane,omitempty"`
+	Lang        i18n.Lang              `json:"lang,omitempty"`
+	DefaultAs   Identity               `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
+	StrictMode  *StrictMode            `json:"strictMode,omitempty"`
+	Users       []AppUser              `json:"users"`
 }
 
 // ProfileName returns the display name for this app config.
@@ -187,6 +190,8 @@ type CliConfig struct {
 	UserOpenId          string
 	UserName            string
 	Lang                i18n.Lang
+	Environment         RuntimeEnvironmentName
+	Lane                string
 	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
 }
 
@@ -301,6 +306,17 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		Lang:        app.Lang,
 		DefaultAs:   app.DefaultAs,
 	}
+	envName, envErr := NormalizeRuntimeEnvironment(string(app.Environment))
+	if envErr != nil {
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "%v", envErr).
+			WithField("environment")
+	}
+	if _, err := ResolveRuntimeEnvironment(cfg.Brand, envName, app.Lane); err != nil {
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "%v", err).
+			WithField("lane")
+	}
+	cfg.Environment = envName
+	cfg.Lane = strings.TrimSpace(app.Lane)
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId
 		cfg.UserName = app.Users[0].UserName

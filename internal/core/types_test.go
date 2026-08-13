@@ -102,6 +102,10 @@ func TestIsPlatformEndpointHost_ExactMatchOnly(t *testing.T) {
 		"accounts.feishu.cn",
 		"mcp.feishu.cn",
 		"applink.feishu.cn",
+		"open.feishu-pre.cn",
+		"applink.feishu-pre.net",
+		"open.feishu-boe.net",
+		"applink.feishu-boe.net",
 		"open.larksuite.com",
 		"accounts.larksuite.com",
 		"mcp.larksuite.com",
@@ -125,16 +129,16 @@ func TestIsPlatformEndpointHost_ExactMatchOnly(t *testing.T) {
 }
 
 func TestIsPlatformEndpointHost_CoversEveryResolvedEndpoint(t *testing.T) {
-	for _, brand := range []LarkBrand{BrandFeishu, BrandLark} {
-		endpoints := reflect.ValueOf(ResolveEndpoints(brand))
+	for _, group := range platformEndpointGroups() {
+		endpoints := reflect.ValueOf(group)
 		for i := 0; i < endpoints.NumField(); i++ {
 			rawURL := endpoints.Field(i).String()
 			parsed, err := url.Parse(rawURL)
 			if err != nil {
-				t.Fatalf("ResolveEndpoints(%q) field %d URL %q: %v", brand, i, rawURL, err)
+				t.Fatalf("endpoint field %d URL %q: %v", i, rawURL, err)
 			}
 			if !IsPlatformEndpointHost(parsed.Hostname()) {
-				t.Errorf("ResolveEndpoints(%q) field %d host %q is missing from the platform transport boundary", brand, i, parsed.Hostname())
+				t.Errorf("endpoint field %d host %q is missing from the platform transport boundary", i, parsed.Hostname())
 			}
 		}
 	}

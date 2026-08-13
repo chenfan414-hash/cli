@@ -79,3 +79,47 @@ func TestVCBotShortcutsIdentityDocsMatchAuthTypes(t *testing.T) {
 		t.Error("skills/lark-vc/SKILL.md identity section must state which commands also support --as bot")
 	}
 }
+
+func TestVCAgentActionDocsMatchShortcuts(t *testing.T) {
+	skill := readSkillDoc(t, "skills/lark-vc-agent/SKILL.md")
+	references := map[string]string{
+		"+meeting-start":  "skills/lark-vc-agent/references/lark-vc-agent-meeting-start.md",
+		"+meeting-invite": "skills/lark-vc-agent/references/lark-vc-agent-meeting-invite.md",
+		"+meeting-end":    "skills/lark-vc-agent/references/lark-vc-agent-meeting-end.md",
+	}
+	shortcuts := map[string]commonShortcutDocContract{
+		"+meeting-start":  {authTypes: VCMeetingStart.AuthTypes, reference: references["+meeting-start"]},
+		"+meeting-invite": {authTypes: VCMeetingInvite.AuthTypes, reference: references["+meeting-invite"]},
+		"+meeting-end":    {authTypes: VCMeetingEnd.AuthTypes, reference: references["+meeting-end"]},
+	}
+
+	for name, contract := range shortcuts {
+		if !hasAuthType(contract.authTypes, "bot") || hasAuthType(contract.authTypes, "user") {
+			t.Fatalf("%s AuthTypes = %v, want bot-only docs contract", name, contract.authTypes)
+		}
+		if !strings.Contains(skill, "`"+name+"`") {
+			t.Fatalf("skills/lark-vc-agent/SKILL.md must mention %s", name)
+		}
+		ref := readSkillDoc(t, contract.reference)
+		if !strings.Contains(ref, "lark-cli vc "+name+" --as bot") {
+			t.Fatalf("%s must document the bot command path", contract.reference)
+		}
+	}
+
+	inviteRef := readSkillDoc(t, references["+meeting-invite"])
+	for _, want := range []string{"--scope selected", "--invitee-id-type open_id", "--invitee-ids", "\"invite_type\": 2", "user_id_type=open_id"} {
+		if !strings.Contains(inviteRef, want) {
+			t.Fatalf("meeting invite reference missing %q", want)
+		}
+	}
+	for _, legacy := range []string{"--type", "--open-ids"} {
+		if strings.Contains(inviteRef, legacy) {
+			t.Fatalf("meeting invite reference must not promote legacy %s", legacy)
+		}
+	}
+}
+
+type commonShortcutDocContract struct {
+	authTypes []string
+	reference string
+}

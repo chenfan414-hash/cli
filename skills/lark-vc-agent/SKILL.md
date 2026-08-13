@@ -40,10 +40,13 @@ metadata:
 | 用户意图示例                                                     | 应路由到                                                                                                                                                  |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | "帮我入会 123456789"、"代我参会"、"让机器人进会旁听"                         | **本 skill** `+meeting-join`                                                                                                                           |
+| "启动会议 123456789"、"让机器人开始这个会议"                              | **本 skill** `+meeting-start`                                                                                                                          |
+| "邀请这些人进会"、"邀请全部建议成员"                                      | **本 skill** `+meeting-invite`                                                                                                                         |
 | "会议现在还开着，谁刚加入了"、"会议里谁在发言"、"有人共享屏幕吗"（**进行中会议**）             | **本 skill** `+meeting-events`                                                                                                                         |
 | "我/某个用户现在在哪个会里"、"给我找当前可拉事件的 meeting_id"                         | **本 skill** `+meeting-list-active`                                                                                                                     |
 | "在会里发一句 xx"、"提示大家 xx"、"反馈听不到/看不到/声音清楚/效果不错"（**进行中会议**） | **本 skill** `+meeting-message-send`                                                                                                                     |
 | "退出会议"、"让机器人离开"                                            | **本 skill** `+meeting-leave`                                                                                                                          |
+| "结束会议"、"关闭这场会议"                                            | **本 skill** `+meeting-end`                                                                                                                            |
 | "昨天那场会有谁参加过"、"搜昨天的会"、"查纪要/逐字稿/录制"                          | [`lark-vc`](../lark-vc/SKILL.md)                                                                                                                      |
 | "帮我参会，结束后把纪要发到群" 等跨阶段场景                                    | 按序编排：本 skill（入会 → 读事件）→ 会议结束后用 [`lark-vc`](../lark-vc/SKILL.md) / [`lark-minutes`](../lark-minutes/SKILL.md) 拉纪要 → [`lark-im`](../lark-im/SKILL.md) 发群 |
 
@@ -89,6 +92,13 @@ metadata:
 12. 用户直接问“这个会议讲了什么 / 现在讲到哪了”且上下文没有明确 `meeting_id` 时，先用用户身份发现当前会议；如果用户明确要求应用机器人视角，或上下文已经是应用机器人参会流程，再用应用身份发现。若返回多个会议，展示候选并让用户选择。
 13. 默认用户身份路径未发现当前会议时，改用 [`lark-vc`](../lark-vc/SKILL.md) 的 `+search` 查询当天最近结束的会议；仍无结果时询问会议时间、主题或会议号，不自行扩大时间范围。应用机器人视角未发现当前会议时，按当前身份解释空结果，不自动查询历史会议或真实入会。
 14. 用户直接提供 **9 位会议号** 并询问会中事件/会议内容时，默认把它当作 active meeting 的筛选条件：先按当前身份查 active meetings，并在返回里匹配 `meeting_no == <9位会议号>`；匹配到唯一会议后取长数字 `meeting_id`，再用同一身份查事件。只有用户明确要求“入会 / 让应用机器人旁听 / 代我参会”时才改用 `+meeting-join`。
+
+### 2A. 启动 / 邀请 / 结束会议（写操作）
+
+1. 用户明确要求启动会议时，用 `+meeting-start --as bot --meeting-number <9位>`；请求体固定为 `join_type=1`、`join_identify.meeting_no=<会议号>`、`action=2`。
+2. 用户要求邀请成员时，用 `+meeting-invite --as bot --meeting-id <meeting_id> --scope all|selected`。`selected` 必须同时传 `--invitee-id-type open_id|union_id|user_id` 和 `--invitee-ids <ids>`；wire 只发送 `invite_type=2`、`invitees=[{id,user_type:1}]` 和 query `user_id_type=<type>`，不要发送 `scope=selected`。`--scope all` 只发送 `invite_type=1`，不带 `invitees`。
+3. 用户明确要求结束整场会议时，用 `+meeting-end --as bot --meeting-id <meeting_id>`；这是影响所有参会人的写操作，不要把“机器人离开”误路由为结束会议。
+4. 这三个写操作只走公开 OpenAPI；不要 fallback BAM、OGW 或 internal RPC。
 
 #### 文档上下文事件
 
@@ -179,12 +189,18 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 | Shortcut                                                        | 类型 | 说明                                                                         |
 | --------------------------------------------------------------- | -- | -------------------------------------------------------------------------- |
 | [`+meeting-join`](references/lark-vc-agent-meeting-join.md)     | 写  | Join an in-progress meeting by 9-digit meeting number                      |
+| [`+meeting-start`](references/lark-vc-agent-meeting-start.md)   | 写  | Start and join a meeting by 9-digit meeting number                         |
+| [`+meeting-invite`](references/lark-vc-agent-meeting-invite.md) | 写  | Invite selected or all eligible users as the app bot                       |
+| [`+meeting-end`](references/lark-vc-agent-meeting-end.md)       | 写  | End a meeting by meeting_id                                                |
 | [`+meeting-list-active`](../lark-vc/references/lark-vc-meeting-list-active.md) | 读  | List active meetings and discover meeting_id for event reads               |
 | [`+meeting-events`](../lark-vc/references/lark-vc-meeting-events.md) | 读  | List meeting events visible to the current identity (participant, transcript, chat, share, document context) |
 | [`+meeting-message-send`](../lark-vc/references/lark-vc-meeting-message-send.md) | 写  | Send an in-meeting text message or reaction emoji                          |
 | [`+meeting-leave`](references/lark-vc-agent-meeting-leave.md)   | 写  | Leave a meeting by meeting\_id                                             |
 
 - [`+meeting-join`](references/lark-vc-agent-meeting-join.md)：入参格式、写操作可见性风险、入会失败排查。
+- [`+meeting-start`](references/lark-vc-agent-meeting-start.md)：启动会议的 `action=2` wire 合同。
+- [`+meeting-invite`](references/lark-vc-agent-meeting-invite.md)：`--scope all|selected` 与 `invite_type` / `invitees` 映射。
+- [`+meeting-end`](references/lark-vc-agent-meeting-end.md)：结束整场会议的写操作风险。
 - [`+meeting-list-active`](../lark-vc/references/lark-vc-meeting-list-active.md)：用户身份和应用身份的不同返回范围。
 - [`+meeting-events`](../lark-vc/references/lark-vc-meeting-events.md)：`meeting_id` 来源、身份延续、分页和错误码（10005 / 20001 / 20002）。
 - [`+meeting-message-send`](../lark-vc/references/lark-vc-meeting-message-send.md)：会中文本、完整 `emoji_type` 列表、身份延续和写操作风险。
