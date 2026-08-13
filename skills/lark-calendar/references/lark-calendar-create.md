@@ -36,7 +36,7 @@ lark-cli calendar +create --summary "..." --start "..." --end "..." \
 | `--attendee-ids <id_list>` | 否 | 参与人 ID 列表（逗号分隔）。支持用户（`ou_`）、群组（`oc_`）和会议室（`omm_`）。AI 提取时请务必保留对应前缀。bot 可作为合法参会人，无需剔除 |
 | `--calendar-id <id>` | 否 | 日历 ID（省略则使用主日历） |
 | `--rrule <rrule>` | 否 | 重复日程的重复性规则，规则设置方式参考rfc5545。示例值："FREQ=DAILY;INTERVAL=1;UNTIL=<具体日期>" |
-| `--meeting-owner-id <ou_>` | 否 | 设置 VC 会议 owner（写入 `vchat.meeting_settings.owner_id`，并自动保持 `vc_type: vc`）。仅以应用（bot）身份在应用日历上操作时生效（需 `--as bot`）；owner 必须为本租户用户身份的 open_id（`ou_`） |
+| `--meeting-owner-id <ou_>` | 否 | 设置 VC 会议 owner。仅以应用（bot）身份在应用日历上操作时生效（需 `--as bot`）；owner 必须为本租户用户身份的 open_id（`ou_`） |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
 > 当用户表达'每周 X'、'每周重复'、'连续 N 周'时，必须使用 rrule 创建重复性日程，而非创建多个独立日程
